@@ -8,6 +8,12 @@
 <body>
 
     <div id="app">
+        <button @click="join('room.$private')" class="btns">subscribe `private`</button>
+        <button @click="left('room.$private')" class="btns">unsubscribe `private`</button>
+
+        <button @click="join('room.$pim')" class="btns">subscribe `pim`</button>
+        <button @click="left('room.$pim')" class="btns">unsubscribe `pim`</button>
+        <code>{{ID}}</code>
         <div id="log">
             <p v-for="(msg,index) in listMessages" :key="msg+index">{{msg}}</p>
         </div>

@@ -18,8 +18,7 @@ func ginConfig() *gin.Engine {
 	// set mode `production` or `dev`
 	gin.SetMode(mode)
 	g := gin.New()
-	g.Use(gin.Recovery())
-	g.Use(gin.Logger())
+	g.Use(gin.Recovery(), gin.Logger())
 	return g
 }
 

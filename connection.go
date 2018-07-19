@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
@@ -29,18 +30,24 @@ const (
 	Subscribe = "subscribe"
 	// Unsubscribe leave name
 	Unsubscribe = "unsubscribe"
-	// MessageText
-	MessageText = "message"
+	// Messagetext
+	Messagetext = "message"
 )
 
 // Message is struct message
 type Message struct {
+	Type    string `json:"type"`
 	Text    string `json:"text"`
 	Created int    `json:"created"`
 	// By is author
 	By string `json:"by"`
 	// To is room
 	To string `json:"to"`
+}
+
+func (m Message) toByte() []byte {
+	b, _ := json.Marshal(m)
+	return b
 }
 
 // Event just message have name = `subscribe` || `unsubscribe`
@@ -66,7 +73,7 @@ func (c Connection) GetID() string {
 
 // InitConnection create new Conn
 func (c *Connection) InitConnection(w http.ResponseWriter, r *http.Request) {
-	go c.listenEvent()
+	// go c.listenEvent()
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
@@ -80,17 +87,21 @@ func (c *Connection) InitConnection(w http.ResponseWriter, r *http.Request) {
 	s := &StackRooms{}
 	s.initStackRooms()
 	c.rooms = s
-
+	c.send = make(chan []byte, 1024)
+	c.event = make(chan *Event)
+	c.sendId()
 }
 
-func (c *Connection) listenEvent() {
-	for {
-		select {
-		case event := <-c.event:
-			utils.Log(event)
-			c.EventActived(event)
-		}
+func (c *Connection) sendId() {
+	m := Message{
+		Type:    "system",
+		Text:    c.GetID(),
+		Created: time.Now().Second(),
+		By:      "system",
+		To:      "client",
 	}
+	message, _ := json.Marshal(m)
+	c.send <- message
 }
 
 // SetReadDeadline  just Add wait
@@ -115,30 +126,27 @@ func (c *Connection) EventActived(evt *Event) {
 		c.mutex.Lock()
 		// do something join
 		// check room is Existed
-		if isExisted := c.rooms.isExisted(evt.Name); !isExisted {
+		if isExisted := c.rooms.isExisted(evt.PayLoad); !isExisted {
 			// create room and add Room
 			r := &Room{}
-			r.createRoom(evt.Name)
+			r.createRoom(evt.PayLoad)
 			c.rooms.addNewRoom(r)
 		}
 		// add member to Room
-		c.rooms.addMemberToRoom(c, evt.Name)
+		c.rooms.addMemberToRoom(c, evt.PayLoad)
 		c.mutex.Unlock()
-		break
 	case Unsubscribe:
 		c.mutex.Lock()
 		// do something leave
-		if isExisted := c.rooms.isExisted(evt.Name); !isExisted {
+		if isExisted := c.rooms.isExisted(evt.PayLoad); !isExisted {
 			utils.Log("Room not existed false to leave")
-			return
 		}
-		c.rooms.removeMemberOfRoom(c, evt.Name)
+		c.rooms.removeMemberOfRoom(c, evt.PayLoad)
 		// check Room have agent
-		if len := c.rooms.checkRoomLen(evt.Name); len == 0 {
-			c.rooms.removeRoom(evt.Name)
+		if len := c.rooms.checkRoomLen(evt.PayLoad); len == 0 {
+			c.rooms.removeRoom(evt.PayLoad)
 		}
 		c.mutex.Unlock()
-		break
 	}
 }
 
@@ -146,7 +154,7 @@ func (c *Connection) EventActived(evt *Event) {
 func (c *Connection) MessageFlowProcess(bin []byte) {
 	event := &Event{}
 	utils.Str2T(string(bin), event)
-	utils.Log("Event Come == ", event.Name)
+	// utils.Log("Event Come == ", event.Name)
 	switch event.Name {
 	case Subscribe, Unsubscribe:
 		slice := []string{}
@@ -156,9 +164,16 @@ func (c *Connection) MessageFlowProcess(bin []byte) {
 		} else if event.Name == Unsubscribe {
 			c.Unsubscribe(slice)
 		}
-	case MessageText:
+	case Messagetext:
 		msg := &Message{}
 		utils.Str2T(event.PayLoad, msg)
+		utils.Log(msg, "blue")
+		// 1. check room is existed room list
+		if isSub := c.rooms.isExisted(msg.To); !isSub {
+			utils.Log("Room is not joined ", msg.To)
+		}
+		// 2. send all client on room
+		c.rooms.sendMessageToRoom(msg.To, msg)
 	default:
 		utils.Log("come fuck")
 	}
@@ -179,6 +194,7 @@ func (c *Connection) ReadMessageData() {
 	for {
 		_, message, err := c.connection.ReadMessage()
 		if err != nil {
+			utils.ErrLog(err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				c.CatchError(err)
 			}
@@ -188,6 +204,8 @@ func (c *Connection) ReadMessageData() {
 		utils.Log("message:", string(message))
 		c.MessageFlowProcess(message)
 		// do some thing with message
+		// utils.Log("Add done!!")
+
 	}
 }
 
@@ -221,12 +239,12 @@ func (c *Connection) WriteMessageData() {
 			if err := w.Close(); err != nil {
 				return
 			}
-		// case evt, ok := <-c.event:
-		// 	if !ok {
-		// 		// c.connection.WriteMessage(websocket.CloseMessage, []byte{})
-		// 		return
-		// 	}
-		// 	c.EventActived(evt)
+		case evt, ok := <-c.event:
+			if !ok {
+				// c.connection.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+			go c.EventActived(evt)
 		case <-ticker.C:
 			c.SetWriteDeadline()
 			if err := c.connection.WriteMessage(websocket.PingMessage, nil); err != nil {
@@ -250,6 +268,7 @@ func (c *Connection) Subscribe(rooms []string) {
 // Unsubscribe just definination any action leave rooms
 func (c *Connection) Unsubscribe(rooms []string) {
 	for _, r := range rooms {
+		utils.Log("unsub: ", r)
 		c.event <- &Event{
 			Name:    Unsubscribe,
 			PayLoad: r,

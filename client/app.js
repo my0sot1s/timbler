@@ -4,6 +4,7 @@ var app = new Vue({
     listMessages: [],
     msg: "",
     ws: null,
+    ID: "",
     events: {
       subscribe: {
         name: "subscribe",
@@ -12,6 +13,13 @@ var app = new Vue({
       unsubscribe: {
         name: "unsubscribe",
         payload: ""
+      },
+      message: {
+        text: "",
+        created: Date.now(),
+        by: "",
+        to: "",
+        type: "text"
       }
     },
     rooms: ["room.$general", "room.$default", "room.$private"]
@@ -24,10 +32,20 @@ var app = new Vue({
     this.ws = null;
   },
   methods: {
+    messageFlow(message) {
+      message = JSON.parse(message);
+      switch (message.type) {
+        case "system":
+          this.ID = message.text;
+        case "text":
+          this.listMessages.push(message);
+      }
+    },
     readMessage() {
       this.ws.onmessage = evt => {
         var messages = evt.data.split("\n");
-        this.listMessages.push("message:" + messages[0]);
+        this.messageFlow(messages[0]);
+        // this.listMessages.push("message:" + messages[0]);
       };
     },
     closeConnection() {
@@ -37,7 +55,7 @@ var app = new Vue({
     },
     openWs() {
       this.ws.onopen = evt => {
-        this.join(this.rooms);
+        this.subscribe(this.rooms);
       };
     },
     wsInit() {
@@ -53,17 +71,38 @@ var app = new Vue({
       this.readMessage();
       this.closeConnection();
     },
-    join(rooms) {
+    subscribe(rooms) {
       let { subscribe } = this.events;
       subscribe.payload = JSON.stringify(rooms);
       this.ws.send(JSON.stringify(subscribe));
     },
-    left(rooms) {},
+    unsubscribe(rooms) {
+      let { unsubscribe } = this.events;
+      unsubscribe.payload = JSON.stringify(rooms);
+      this.ws.send(JSON.stringify(unsubscribe));
+    },
 
     submit() {
       if (!this.ws || !this.msg) return;
-      this.ws.send(this.msg);
+      let { message } = this.events;
+      this.ws.send(
+        JSON.stringify({
+          name: "message",
+          payload: JSON.stringify({
+            ...message,
+            text: this.msg,
+            to: this.rooms[0],
+            by: this.ID
+          })
+        })
+      );
       this.msg = "";
+    },
+    join(name) {
+      this.subscribe([name]);
+    },
+    left(name) {
+      this.unsubscribe([name]);
     }
   }
 });
