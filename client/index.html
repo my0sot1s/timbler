@@ -1,0 +1,23 @@
+<html>
+
+<head>
+    <link rel="stylesheet" href="main.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+</head>
+
+<body>
+
+    <div id="app">
+        <div id="log">
+            <p v-for="(msg,index) in listMessages" :key="msg+index">{{msg}}</p>
+        </div>
+        <div id="form">
+            <input type="text" id="msg" size="100" v-model="msg" @keyup.enter="submit" />
+            <input type="button" value="Send" @click="submit" />
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
