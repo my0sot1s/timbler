@@ -2,9 +2,85 @@ package main
 
 import (
 	"errors"
+	"time"
 
 	"github.com/my0sot1s/tinker/utils"
 )
+
+// RoomHub room service
+type RoomHub struct {
+	rooms   map[*Room]bool
+	created int
+}
+
+// Init roomHub
+func (rh *RoomHub) Init() {
+	rh.rooms = make(map[*Room]bool)
+	rh.created = time.Now().Nanosecond()
+}
+
+func (rh RoomHub) isRoomExisted(rname string) bool {
+	for r := range rh.rooms {
+		if r.GetName() == rname {
+			return true
+		}
+	}
+	return false
+}
+
+func (rh *RoomHub) getRoomByName(rname string) *Room {
+	for r := range rh.rooms {
+		if r.GetName() == rname {
+			return r
+		}
+	}
+	utils.Log("Room not existed")
+	return nil
+}
+
+func (rh RoomHub) connectionCountOnRoom(rname string) int {
+	for r := range rh.rooms {
+		if r.GetName() == rname {
+			return len(r.Clients)
+		}
+	}
+	utils.Log("Can not found room ", rname)
+	return -1
+}
+
+func (rh *RoomHub) addNewRoom(room *Room) {
+	for R := range rh.rooms {
+		if R.GetName() == room.GetName() {
+			utils.Log("+ Room is Existed")
+			return
+		}
+	}
+	rh.rooms[room] = true
+	utils.Log("+ Room is Added: ", room.Name)
+}
+
+func (rh *RoomHub) removeRoom(rname string) {
+	for r, state := range rh.rooms {
+		if r.GetName() == rname && state {
+			delete(rh.rooms, r)
+			utils.Log("+ Room is Deleted: ", r.Name)
+			return
+		}
+	}
+	utils.Log("+ Room is Not Existed: ", rname)
+}
+
+func (rh *RoomHub) sendMessageToRoom(room *Room, msg *Message) {
+	utils.Log("Sent to , ", room.GetName())
+	for r := range rh.rooms {
+		if r.GetName() == room.GetName() {
+			utils.Log(len(r.Clients))
+			go r.broadcast(msg)
+			return
+		}
+	}
+	utils.Log("Not found room")
+}
 
 // Room is a unit have many connection
 type Room struct {
@@ -58,89 +134,7 @@ func (r *Room) removeClient(c *Connection) {
 
 func (r *Room) broadcast(msg *Message) {
 	for c := range r.Clients {
+		utils.Log("--->", string(msg.toByte()))
 		c.send <- msg.toByte()
 	}
-}
-
-// StackRooms is a lis room of connector
-type StackRooms struct {
-	rooms map[*Room]bool
-}
-
-func (sr *StackRooms) initStackRooms() {
-	sr.rooms = make(map[*Room]bool)
-}
-
-func (sr *StackRooms) isExisted(name string) bool {
-	for r := range sr.rooms {
-		if r.GetName() == name {
-			return true
-		}
-	}
-	return false
-}
-
-func (sr *StackRooms) addMemberToRoom(c *Connection, rname string) {
-	for r := range sr.rooms {
-		if r.GetName() == rname {
-			r.addClient(c)
-			utils.Log("+ added client ", c.GetID(), " to ", r.GetName(), "green")
-			return
-		}
-	}
-	utils.Log("Can not found room: ", rname, "cyan")
-}
-
-func (sr *StackRooms) removeMemberOfRoom(c *Connection, rname string) {
-	for r := range sr.rooms {
-		if r.GetName() == rname {
-			utils.Log("+ removed client ", c.GetID(), " to ", r.GetName(), "green")
-			r.removeClient(c)
-			return
-		}
-	}
-	utils.Log("Can not found room ", rname, "cyan")
-}
-
-func (sr StackRooms) checkRoomLen(rname string) int {
-	for r := range sr.rooms {
-		if r.GetName() == rname {
-			return len(r.Clients)
-		}
-	}
-	utils.Log("Can not found room ", rname)
-	return -1
-}
-
-func (sr *StackRooms) addNewRoom(room *Room) {
-	r := sr.rooms
-	for R, state := range r {
-		if R.ID == room.ID && state {
-			utils.Log("+ Room is Existed")
-			return
-		}
-	}
-	sr.rooms[room] = true
-	utils.Log("+ Room is Added: ", room.Name)
-}
-
-func (sr *StackRooms) removeRoom(rname string) {
-	rooms := sr.rooms
-	for r, state := range rooms {
-		if r.GetName() == rname && state {
-			delete(sr.rooms, r)
-			utils.Log("+ Room is Deleted: ", r.Name)
-			return
-		}
-	}
-	utils.Log("+ Room is Not Existed: ", rname)
-}
-
-func (sr *StackRooms) sendMessageToRoom(rname string, msg *Message) {
-	for r := range sr.rooms {
-		if r.GetName() == rname {
-			go r.broadcast(msg)
-		}
-	}
-	utils.Log("Not found room")
 }

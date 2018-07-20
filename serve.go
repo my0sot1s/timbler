@@ -3,11 +3,9 @@ package main
 import "github.com/gin-gonic/gin"
 
 // run ws
-func runWs(ctx *gin.Context) {
-	r := ctx.Request
-	w := ctx.Writer
+func runWs(rh *RoomHub, ctx *gin.Context) {
 	c := &Connection{}
-	c.InitConnection(w, r)
+	c.InitConnection(rh, ctx.Writer, ctx.Request)
 	go c.ReadMessageData()
 	go c.WriteMessageData()
 }
@@ -27,6 +25,10 @@ func StartCoreWs() {
 	// Config Gin
 	router := ginConfig()
 	router.Static("/client", "./client")
-	router.GET("/ws", runWs)
+	rh := &RoomHub{}
+	go rh.Init()
+	router.GET("/ws", func(ctx *gin.Context) {
+		runWs(rh, ctx)
+	})
 	router.Run()
 }

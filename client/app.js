@@ -91,7 +91,7 @@ var app = new Vue({
           payload: JSON.stringify({
             ...message,
             text: this.msg,
-            to: this.rooms[0],
+            to: this.rooms[1],
             by: this.ID
           })
         })

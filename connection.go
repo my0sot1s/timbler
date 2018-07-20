@@ -58,12 +58,13 @@ type Event struct {
 
 // Connection is a user
 type Connection struct {
-	connection *websocket.Conn
-	ID         string
-	send       chan []byte
-	event      chan *Event
-	mutex      *sync.Mutex
-	rooms      *StackRooms
+	connection   *websocket.Conn
+	ID           string
+	send         chan []byte
+	event        chan *Event
+	mutex        *sync.Mutex
+	roomsInvited map[*Room]bool
+	roomHub      *RoomHub
 }
 
 // GetID just get ID
@@ -72,21 +73,20 @@ func (c Connection) GetID() string {
 }
 
 // InitConnection create new Conn
-func (c *Connection) InitConnection(w http.ResponseWriter, r *http.Request) {
+func (c *Connection) InitConnection(rh *RoomHub, w http.ResponseWriter, r *http.Request) {
 	// go c.listenEvent()
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
+	c.roomHub = rh
 	c.connection = conn
 	if c.ID == "" || &c.ID == nil {
 		c.ID = createID("cl")
 	}
 	c.mutex = &sync.Mutex{}
-	s := &StackRooms{}
-	s.initStackRooms()
-	c.rooms = s
+	c.roomsInvited = make(map[*Room]bool)
 	c.send = make(chan []byte, 1024)
 	c.event = make(chan *Event)
 	c.sendId()
@@ -119,35 +119,51 @@ func (c *Connection) CatchError(err error) {
 	utils.ErrLog(err)
 }
 
+// IsConnectionInvited check connection is invited
+func (c *Connection) IsConnectionInvited(rname string) bool {
+	for r := range c.roomsInvited {
+		if r.GetName() == rname {
+			return true
+		}
+	}
+	return false
+}
+
 // EventActived actived is process event
 func (c *Connection) EventActived(evt *Event) {
+	c.mutex.Lock()
 	switch evt.Name {
 	case Subscribe:
-		c.mutex.Lock()
 		// do something join
 		// check room is Existed
-		if isExisted := c.rooms.isExisted(evt.PayLoad); !isExisted {
+		if isExisted := c.roomHub.isRoomExisted(evt.PayLoad); !isExisted {
 			// create room and add Room
 			r := &Room{}
 			r.createRoom(evt.PayLoad)
-			c.rooms.addNewRoom(r)
+			c.roomHub.addNewRoom(r)
 		}
-		// add member to Room
-		c.rooms.addMemberToRoom(c, evt.PayLoad)
-		c.mutex.Unlock()
+		r := c.roomHub.getRoomByName(evt.PayLoad)
+		if !c.IsConnectionInvited(r.GetName()) {
+			c.roomsInvited[r] = true
+		}
+		r.Clients[c] = true
+
 	case Unsubscribe:
-		c.mutex.Lock()
 		// do something leave
-		if isExisted := c.rooms.isExisted(evt.PayLoad); !isExisted {
+		if isExisted := c.roomHub.isRoomExisted(evt.PayLoad); !isExisted {
 			utils.Log("Room not existed false to leave")
+		} else {
+			r := c.roomHub.getRoomByName(evt.PayLoad)
+			c.roomsInvited[r] = false
+			delete(c.roomsInvited, r)
+			// check Room have agent
+			if len := c.roomHub.connectionCountOnRoom(evt.PayLoad); len == 0 {
+				c.roomHub.removeRoom(evt.PayLoad)
+			}
+			delete(r.Clients, c)
 		}
-		c.rooms.removeMemberOfRoom(c, evt.PayLoad)
-		// check Room have agent
-		if len := c.rooms.checkRoomLen(evt.PayLoad); len == 0 {
-			c.rooms.removeRoom(evt.PayLoad)
-		}
-		c.mutex.Unlock()
 	}
+	c.mutex.Unlock()
 }
 
 // MessageFlowProcess split flow
@@ -169,15 +185,15 @@ func (c *Connection) MessageFlowProcess(bin []byte) {
 		utils.Str2T(event.PayLoad, msg)
 		utils.Log(msg, "blue")
 		// 1. check room is existed room list
-		if isSub := c.rooms.isExisted(msg.To); !isSub {
+		r := c.roomHub.getRoomByName(msg.To)
+		if isSub := c.roomsInvited[r]; !isSub || r == nil {
 			utils.Log("Room is not joined ", msg.To)
 		}
 		// 2. send all client on room
-		c.rooms.sendMessageToRoom(msg.To, msg)
+		c.roomHub.sendMessageToRoom(r, msg)
 	default:
 		utils.Log("come fuck")
 	}
-
 }
 
 // ReadMessageData is a action Read message from any room
@@ -263,6 +279,7 @@ func (c *Connection) Subscribe(rooms []string) {
 			PayLoad: r,
 		}
 	}
+	utils.Log("On room ")
 }
 
 // Unsubscribe just definination any action leave rooms
