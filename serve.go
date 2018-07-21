@@ -21,7 +21,7 @@ func ginConfig() *gin.Engine {
 }
 
 // StartCoreWs Start Ws
-func StartCoreWs() {
+func StartCoreWs(port string) {
 	// Config Gin
 	router := ginConfig()
 	router.Static("/client", "./client")
@@ -30,5 +30,5 @@ func StartCoreWs() {
 	router.GET("/ws", func(ctx *gin.Context) {
 		runWs(rh, ctx)
 	})
-	router.Run()
+	router.Run(":" + port)
 }
