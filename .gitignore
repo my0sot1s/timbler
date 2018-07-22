@@ -1,2 +1,10 @@
 ./debug
 ./timbler
+
+debug
+
+timbler
+
+ws/client.js
+
+node_modules/

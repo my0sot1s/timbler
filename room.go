@@ -82,6 +82,15 @@ func (rh *RoomHub) sendMessageToRoom(room *Room, msg *Message) {
 	utils.Log("Not found room")
 }
 
+func (rh *RoomHub) getConnectionById(id string) *Connection {
+	for r := range rh.rooms {
+		if connection := r.getConnectionById(id); connection != nil {
+			return connection
+		}
+	}
+	return nil
+}
+
 // Room is a unit have many connection
 type Room struct {
 	Name    string
@@ -137,4 +146,13 @@ func (r *Room) broadcast(msg *Message) {
 		utils.Log("--->", string(msg.toByte()))
 		c.send <- msg.toByte()
 	}
+}
+
+func (r *Room) getConnectionById(id string) *Connection {
+	for c := range r.Clients {
+		if c.GetID() == id {
+			return c
+		}
+	}
+	return nil
 }
