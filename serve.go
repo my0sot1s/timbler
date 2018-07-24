@@ -16,29 +16,26 @@ func runWs(rh *RoomHub, ctx *gin.Context) {
 }
 
 // for data = {id:string,event:string,payload:[{name:string,payload:string}]}
-func pubsub(hub *RoomHub, ctx *gin.Context) {
+func subUnSub(hub *RoomHub, ctx *gin.Context) {
 	id := ctx.PostForm("id")
 	event := ctx.PostForm("event")
 	payload := ctx.PostForm("payload")
 	var rooms []string
 	json.Unmarshal([]byte(payload), &rooms)
-	connection := hub.getConnectionById(id)
-	if connection == nil {
+	if event != "subscribe" && event != "unsubscribe" {
+		ctx.JSON(400, gin.H{
+			"name":    "error",
+			"payload": "Event is not valid",
+		})
+		return
+	}
+	if isDone := hub.injectEvent4Hub(id, event, rooms); !isDone {
 		utils.Log("Can not find connection by cid:", id)
 		ctx.JSON(400, gin.H{
 			"name":    "error",
 			"payload": "Can not find connection by cid:",
 		})
-	}
-	if event == "subscribe" {
-		connection.Subscribe(rooms)
-	} else if event == "unsubscribe" {
-		connection.Unsubscribe(rooms)
-	} else {
-		ctx.JSON(400, gin.H{
-			"name":    "error",
-			"payload": "Event is not valid",
-		})
+		return
 	}
 	ctx.JSON(200, gin.H{
 		"name": "success",
@@ -65,8 +62,8 @@ func StartCoreWs(port string) {
 	router.GET("/ws", func(ctx *gin.Context) {
 		runWs(rh, ctx)
 	})
-	router.POST("/ws/pubsub", func(ctx *gin.Context) {
-		pubsub(rh, ctx)
+	router.POST("/ws/sub-unsub", func(ctx *gin.Context) {
+		subUnSub(rh, ctx)
 	})
 
 	router.Run(":" + port)

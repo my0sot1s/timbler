@@ -22,7 +22,7 @@ var app = new Vue({
         type: "text"
       }
     },
-    rooms: ["room.$general", "room.$default", "room.$private"]
+    rooms: ["room.$default"]
   },
   created() {
     this.wsInit();
@@ -91,7 +91,7 @@ var app = new Vue({
           payload: JSON.stringify({
             ...message,
             text: this.msg,
-            to: this.rooms[1],
+            to: "room.$pim",
             by: this.ID
           })
         })
@@ -106,3 +106,4 @@ var app = new Vue({
     }
   }
 });
+

@@ -82,13 +82,13 @@ func (rh *RoomHub) sendMessageToRoom(room *Room, msg *Message) {
 	utils.Log("Not found room")
 }
 
-func (rh *RoomHub) getConnectionById(id string) *Connection {
+func (rh *RoomHub) injectEvent4Hub(id string, event string, rooms []string) bool {
 	for r := range rh.rooms {
-		if connection := r.getConnectionById(id); connection != nil {
-			return connection
+		if isDone := r.find4SubOrUnsub(id, event, rooms); isDone {
+			return isDone
 		}
 	}
-	return nil
+	return false
 }
 
 // Room is a unit have many connection
@@ -148,11 +148,17 @@ func (r *Room) broadcast(msg *Message) {
 	}
 }
 
-func (r *Room) getConnectionById(id string) *Connection {
+func (r *Room) find4SubOrUnsub(id string, event string, rooms []string) bool {
 	for c := range r.Clients {
-		if c.GetID() == id {
-			return c
+		if c.GetID() != id {
+			continue
 		}
+		if event == "subscribe" {
+			c.Subscribe(rooms)
+		} else if event == "unsubscribe" {
+			c.Unsubscribe(rooms)
+		}
+		return true
 	}
-	return nil
+	return false
 }
