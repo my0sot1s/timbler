@@ -1,4 +1,4 @@
-package redis
+package redislab
 
 import (
 	"encoding/json"
@@ -33,25 +33,27 @@ func (rc *RedisCli) Config(redisHost, redisDb, redisPass string) error {
 	rc.mutex = &sync.Mutex{}
 	rc.message = make(chan []byte)
 	utils.Log("ಠ‿ಠ Redis connected ಠ‿ಠ")
-	go rc.listenMessage()
 	return nil
 }
+
+// SetValue  to store
 func (rc *RedisCli) SetValue(key string, value string, expiration time.Duration) error {
 	return rc.client.Set(key, value, expiration).Err()
 }
 
+// GetValue from store
 func (rc *RedisCli) GetValue(key string) (string, error) {
 	val, err := rc.client.Get(key).Result()
 	return val, err
 }
 
+// DelKey from store
 func (rc *RedisCli) DelKey(key []string) (int, error) {
 	val, err := rc.client.Del(key...).Result()
 	return int(val), err
 }
 
-// multiple item
-
+// LPushItem with key
 func (rc *RedisCli) LPushItem(key string, timeExpired int, values ...interface{}) error {
 
 	// str := make([]string, 0)
@@ -65,6 +67,7 @@ func (rc *RedisCli) LPushItem(key string, timeExpired int, values ...interface{}
 	return nil
 }
 
+// LRangeAll get with key
 func (rc *RedisCli) LRangeAll(key string) ([]map[string]interface{}, error) {
 	var raw []string
 	raw, err := rc.client.LRange(key, 0, -1).Result()
@@ -77,6 +80,7 @@ func (rc *RedisCli) LRangeAll(key string) ([]map[string]interface{}, error) {
 	return desMap, err
 }
 
+// SetExpired get time exprired key
 func (rc *RedisCli) SetExpired(key string, min int) bool {
 	d := time.Duration(min) * time.Minute
 
@@ -85,6 +89,10 @@ func (rc *RedisCli) SetExpired(key string, min int) bool {
 	return b
 }
 
+/*
+	Pub Sub
+*/
+// Publish message
 func (rc *RedisCli) Publish(message string, channels []string) error {
 	for _, channel := range channels {
 		rc.mutex.Lock()
@@ -94,18 +102,26 @@ func (rc *RedisCli) Publish(message string, channels []string) error {
 	return nil
 }
 
-func (rc *RedisCli) Subscribe(channels []string) error {
-	rc.mutex.Lock()
-	rc.client.Subscribe(channels...)
-	defer rc.mutex.Unlock()
-	return nil
+// Subscribe channels
+func (rc *RedisCli) Subscribe(channels []string) *redis.PubSub {
+	// rc.mutex.Lock()
+	// defer rc.mutex.Unlock()
+	p := rc.client.Subscribe(channels...)
+	go rc.listenMessage(p)
+	return p
 }
 
-func (rc *RedisCli) listenMessage() {
+func (rc *RedisCli) listenMessage(pubsub *redis.PubSub) {
 	for {
+		msg, err := pubsub.ReceiveMessage()
+		if err != nil {
+			panic(err)
+		}
+		utils.Log(msg.Channel, msg.Payload)
 	}
 }
 
+// Close redis
 func (rc *RedisCli) Close() error {
 	return rc.Close()
 }

@@ -14,6 +14,8 @@ func main() {
 	if port == "" {
 		port = defaultPort
 	}
-	StartCoreWs(port)
+	// StartCoreWs(port)
+	rd := redislab.RedisCli{}
+	rd.Config("redis-16703.c10.us-east-1-2.ec2.cloud.redislabs.com:16703", "redis-node", "95manhte")
 	utils.Log("WS running :", port)
 }
