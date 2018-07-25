@@ -8,3 +8,5 @@ timbler
 ws/client.js
 
 node_modules/
+
+vendor/
