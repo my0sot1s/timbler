@@ -9,16 +9,13 @@ import (
 	"github.com/my0sot1s/tinker/utils"
 )
 
-// RedisCli is struct of redis
 type RedisCli struct {
 	client   *redis.Client
 	duration time.Duration
 	mutex    *sync.Mutex
-	message  chan *redis.Message
+	message  chan []byte
 }
-type callback func(string, string)
 
-// Config init struct of redis
 func (rc *RedisCli) Config(redisHost, redisDb, redisPass string) error {
 
 	rc.client = redis.NewClient(&redis.Options{
@@ -34,13 +31,7 @@ func (rc *RedisCli) Config(redisHost, redisDb, redisPass string) error {
 		return err
 	}
 	rc.mutex = &sync.Mutex{}
-	rc.message = make(chan *redis.Message)
-	go func() {
-		for {
-			mes := <-rc.message
-			utils.Log("receive:", mes.Channel, " , ", mes.Payload)
-		}
-	}()
+	rc.message = make(chan []byte)
 	utils.Log("ಠ‿ಠ Redis connected ಠ‿ಠ")
 	return nil
 }
@@ -98,24 +89,26 @@ func (rc *RedisCli) SetExpired(key string, min int) bool {
 	return b
 }
 
+/*
+	Pub Sub
+*/
 // Publish message
 func (rc *RedisCli) Publish(message string, channels []string) error {
-	// rc.mutex.Lock()
 	for _, channel := range channels {
+		rc.mutex.Lock()
+		utils.Log("publish: ", message)
 		rc.client.Publish(channel, message)
+		rc.mutex.Unlock()
 	}
-	// rc.mutex.Unlock()
-	utils.Log("publish done")
 	return nil
 }
 
 // Subscribe channels
 func (rc *RedisCli) Subscribe(channels []string) *redis.PubSub {
-	// rc.mutex.Lock()
-	// defer rc.mutex.Unlock()
+	rc.mutex.Lock()
 	p := rc.client.Subscribe(channels...)
-	utils.Log("Subscribe done!")
-	go rc.listenMessage(p)
+	rc.mutex.Unlock()
+	rc.listenMessage(p)
 	return p
 }
 
@@ -125,7 +118,7 @@ func (rc *RedisCli) listenMessage(pubsub *redis.PubSub) {
 		if err != nil {
 			panic(err)
 		}
-		rc.message <- msg
+		utils.Log(msg.Channel, msg.Payload)
 	}
 }
 

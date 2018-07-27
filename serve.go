@@ -4,19 +4,20 @@ import (
 	"encoding/json"
 
 	"github.com/gin-gonic/gin"
+	"github.com/my0sot1s/timbler/wsServer"
 	"github.com/my0sot1s/tinker/utils"
 )
 
 // run ws
-func runWs(rh *RoomHub, ctx *gin.Context) {
-	c := &Connection{}
+func runWs(rh *wsServer.RoomHub, ctx *gin.Context) {
+	c := &wsServer.Connection{}
 	c.InitConnection(rh, ctx.Writer, ctx.Request)
 	go c.ReadMessageData()
 	go c.WriteMessageData()
 }
 
 // for data = {id:string,event:string,payload:[{name:string,payload:string}]}
-func subUnSub(hub *RoomHub, ctx *gin.Context) {
+func subUnSub(hub *wsServer.RoomHub, ctx *gin.Context) {
 	id := ctx.PostForm("id")
 	event := ctx.PostForm("event")
 	payload := ctx.PostForm("payload")
@@ -29,7 +30,7 @@ func subUnSub(hub *RoomHub, ctx *gin.Context) {
 		})
 		return
 	}
-	if isDone := hub.injectEvent4Hub(id, event, rooms); !isDone {
+	if isDone := hub.InjectEvent4Hub(id, event, rooms); !isDone {
 		utils.Log("Can not find connection by cid:", id)
 		ctx.JSON(400, gin.H{
 			"name":    "error",
@@ -57,7 +58,7 @@ func StartCoreWs(port string) {
 	// Config Gin
 	router := ginConfig()
 	router.Static("/client", "./client")
-	rh := &RoomHub{}
+	rh := &wsServer.RoomHub{}
 	go rh.Init()
 	router.GET("/ws", func(ctx *gin.Context) {
 		runWs(rh, ctx)
