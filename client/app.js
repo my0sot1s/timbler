@@ -14,6 +14,10 @@ var app = new Vue({
         name: "unsubscribe",
         payload: ""
       },
+      commit: {
+        name: "commit",
+        payload: ""
+      },
       message: {
         text: "",
         created: Date.now(),
@@ -34,8 +38,10 @@ var app = new Vue({
   methods: {
     messageFlow(message) {
       message = JSON.parse(message);
+      this.commit(message);
       switch (message.type) {
         case "system":
+          window.localStorage.setItem("connectionID", message.text);
           this.ID = message.text;
         case "text":
           this.listMessages.push(message);
@@ -66,7 +72,10 @@ var app = new Vue({
         return;
       }
       this.listMessages.push("--> Ready to start <--");
-      this.ws = new WebSocket("ws://" + document.location.host + "/ws");
+      let connectionID = window.localStorage.getItem("connectionID");
+      this.ws = new WebSocket(
+        "ws://" + document.location.host + "/ws?connection_id=" + connectionID
+      );
       this.openWs();
       this.readMessage();
       this.closeConnection();
@@ -81,7 +90,11 @@ var app = new Vue({
       unsubscribe.payload = JSON.stringify(rooms);
       this.ws.send(JSON.stringify(unsubscribe));
     },
-
+    commit(message) {
+      let { commit } = this.events;
+      commit.payload = message.id;
+      this.ws.send(JSON.stringify(commit));
+    },
     submit() {
       if (!this.ws || !this.msg) return;
       let { message } = this.events;
@@ -106,4 +119,3 @@ var app = new Vue({
     }
   }
 });
-

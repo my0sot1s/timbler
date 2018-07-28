@@ -106,6 +106,19 @@ func (c *Connection) InitConnection(rh *RoomHub, w http.ResponseWriter, r *http.
 	c.sendId()
 }
 
+func (c *Connection) killConnection() {
+	c.ID = ""
+	close(c.send)
+	close(c.event)
+	c.mutex = nil
+	c.roomsInvited = nil
+	c.roomHub = nil
+	c.messagesQueue = nil
+	c.missPingCount = 0
+	// c.connection.Close()
+	c = nil
+}
+
 func (c *Connection) sendId() {
 	m := Message{
 		ID:      helper.CreateID("msg"),
@@ -183,6 +196,7 @@ func (c *Connection) EventActived(evt *Event) {
 			delete(r.Clients, c)
 		}
 	}
+
 	c.mutex.Unlock()
 }
 
@@ -215,7 +229,9 @@ func (c *Connection) MessageFlowProcess(bin []byte) {
 		c.mutex.Lock()
 		c.roomHub.SendMessageToRoom(r, msg)
 		c.messagesQueue[msg.ID] = &CommitEvent{count: 0, Msg: msg}
-		c.mutex.Lock()
+		c.mutex.Unlock()
+	case Commit:
+		c.Commit(event.PayLoad)
 	default:
 		utils.Log("come fuck")
 	}
@@ -223,9 +239,8 @@ func (c *Connection) MessageFlowProcess(bin []byte) {
 
 // ReadMessageData is a action Read message from any room
 func (c *Connection) ReadMessageData() {
-	defer func() {
-		c.connection.Close()
-	}()
+	defer utils.Log("defer read")
+	// defer c.connection.Close()
 	c.connection.SetReadLimit(maxMessageReadSize)
 	c.SetReadDeadline()
 	c.connection.SetPongHandler(func(string) error {
@@ -237,10 +252,16 @@ func (c *Connection) ReadMessageData() {
 		if err != nil {
 			utils.ErrLog(err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				c.CatchError(err)
+				if c.missPingCount >= limitResent {
+					utils.Log("Connection Dead: ", c.ID)
+					c.killConnection()
+					// c.CatchError(err)
+				}
+				c.missPingCount++
 			}
 			break
 		}
+		c.missPingCount = 0
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 		utils.Log("message:", string(message))
 		c.MessageFlowProcess(message)
@@ -256,9 +277,10 @@ func (c *Connection) WriteMessageData() {
 	// time for resent message uncommit
 	resent := time.NewTicker(pongWait / 2)
 	defer func() {
+		defer utils.Log("defer write")
 		ticker.Stop()
 		resent.Stop()
-		c.connection.Close()
+		// c.killConnection()
 	}()
 
 	for {
@@ -302,13 +324,8 @@ func (c *Connection) WriteMessageData() {
 			c.SetWriteDeadline()
 			// ping Client
 			if err := c.connection.WriteMessage(websocket.PingMessage, nil); err != nil {
-				if c.missPingCount >= limitResent {
-					c.connection.Close()
-				}
-				c.missPingCount++
 				return
 			}
-			c.missPingCount = 0
 		}
 	}
 }

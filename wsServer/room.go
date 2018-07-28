@@ -100,6 +100,16 @@ func (rh *RoomHub) InjectEvent4Hub(id string, event string, rooms []string) bool
 	return false
 }
 
+// IsExistConnection check connection by Id is Existed
+func (rh *RoomHub) IsExistConnection(connectionID string) bool {
+	for r := range rh.rooms {
+		if isDone := r.findWithConnectionId(connectionID); isDone {
+			return isDone
+		}
+	}
+	return false
+}
+
 // Room is a unit have many connection
 type Room struct {
 	Name    string
@@ -166,6 +176,16 @@ func (r *Room) find4SubOrUnsub(id string, event string, rooms []string) bool {
 			c.Subscribe(rooms)
 		} else if event == "unsubscribe" {
 			c.Unsubscribe(rooms)
+		}
+		return true
+	}
+	return false
+}
+
+func (r *Room) findWithConnectionId(id string) bool {
+	for c := range r.Clients {
+		if c.GetID() != id {
+			continue
 		}
 		return true
 	}
