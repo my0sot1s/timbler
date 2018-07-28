@@ -27,16 +27,20 @@ const (
 	pongWait           = 60 * time.Second
 	writeWait          = 10 * time.Second
 	pingPeriod         = (pongWait * 9) / 10
+	limitResent        = 4
 	// Subscribe join name
 	Subscribe = "subscribe"
 	// Unsubscribe leave name
 	Unsubscribe = "unsubscribe"
-	// Messagetext
+	// Commit leave name
+	Commit = "commit"
+	// Messagetext is event sent message
 	Messagetext = "message"
 )
 
 // Message is struct message
 type Message struct {
+	ID      string `json:"id"`
 	Type    string `json:"type"`
 	Text    string `json:"text"`
 	Created int    `json:"created"`
@@ -57,15 +61,22 @@ type Event struct {
 	PayLoad string `json:"payload"`
 }
 
+type CommitEvent struct {
+	Msg   *Message
+	count int
+}
+
 // Connection is a user
 type Connection struct {
-	connection   *websocket.Conn
-	ID           string
-	send         chan []byte
-	event        chan *Event
-	mutex        *sync.Mutex
-	roomsInvited map[*Room]bool
-	roomHub      *RoomHub
+	connection    *websocket.Conn
+	ID            string
+	send          chan []byte
+	event         chan *Event
+	mutex         *sync.Mutex
+	roomsInvited  map[*Room]bool
+	roomHub       *RoomHub
+	messagesQueue map[string]*CommitEvent
+	missPingCount int
 }
 
 // GetID just get ID
@@ -81,20 +92,23 @@ func (c *Connection) InitConnection(rh *RoomHub, w http.ResponseWriter, r *http.
 		log.Println(err)
 		return
 	}
-	c.roomHub = rh
-	c.connection = conn
 	if c.ID == "" || &c.ID == nil {
 		c.ID = helper.CreateID("cl")
 	}
+	c.connection = conn
+	c.roomHub = rh
 	c.mutex = &sync.Mutex{}
 	c.roomsInvited = make(map[*Room]bool)
 	c.send = make(chan []byte, 1024)
 	c.event = make(chan *Event)
+	c.messagesQueue = make(map[string]*CommitEvent)
+	c.missPingCount = 0
 	c.sendId()
 }
 
 func (c *Connection) sendId() {
 	m := Message{
+		ID:      helper.CreateID("msg"),
 		Type:    "system",
 		Text:    c.GetID(),
 		Created: time.Now().Second(),
@@ -149,6 +163,11 @@ func (c *Connection) EventActived(evt *Event) {
 		}
 		r.Clients[c] = true
 
+	case Commit:
+		if mes := c.messagesQueue[evt.PayLoad]; mes != nil {
+			delete(c.messagesQueue, evt.PayLoad)
+		}
+
 	case Unsubscribe:
 		// do something leave
 		if isExisted := c.roomHub.IsRoomExisted(evt.PayLoad); !isExisted {
@@ -192,7 +211,11 @@ func (c *Connection) MessageFlowProcess(bin []byte) {
 			return
 		}
 		// 2. send all client on room
+		msg.ID = helper.CreateID("msg")
+		c.mutex.Lock()
 		c.roomHub.SendMessageToRoom(r, msg)
+		c.messagesQueue[msg.ID] = &CommitEvent{count: 0, Msg: msg}
+		c.mutex.Lock()
 	default:
 		utils.Log("come fuck")
 	}
@@ -223,15 +246,18 @@ func (c *Connection) ReadMessageData() {
 		c.MessageFlowProcess(message)
 		// do some thing with message
 		// utils.Log("Add done!!")
-
 	}
 }
 
 // WriteMessageData is broad cast data to a room
 func (c *Connection) WriteMessageData() {
+	// time for send ping
 	ticker := time.NewTicker(pingPeriod)
+	// time for resent message uncommit
+	resent := time.NewTicker(pongWait / 2)
 	defer func() {
 		ticker.Stop()
+		resent.Stop()
 		c.connection.Close()
 	}()
 
@@ -263,11 +289,26 @@ func (c *Connection) WriteMessageData() {
 				return
 			}
 			go c.EventActived(evt)
+		case <-resent.C:
+			// resent all Message
+			for _, commitEvent := range c.messagesQueue {
+				if commitEvent.count >= limitResent {
+					c.connection.Close()
+					return
+				}
+				commitEvent.count++
+			}
 		case <-ticker.C:
 			c.SetWriteDeadline()
+			// ping Client
 			if err := c.connection.WriteMessage(websocket.PingMessage, nil); err != nil {
+				if c.missPingCount >= limitResent {
+					c.connection.Close()
+				}
+				c.missPingCount++
 				return
 			}
+			c.missPingCount = 0
 		}
 	}
 }
@@ -292,5 +333,13 @@ func (c *Connection) Unsubscribe(rooms []string) {
 			Name:    Unsubscribe,
 			PayLoad: r,
 		}
+	}
+}
+
+// Commit just definination any action leave rooms
+func (c *Connection) Commit(mID string) {
+	c.event <- &Event{
+		Name:    Commit,
+		PayLoad: mID,
 	}
 }

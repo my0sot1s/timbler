@@ -30,7 +30,7 @@ func main() {
 	if port == "" {
 		port = defaultPort
 	}
-	// StartCoreWs(port)
-	runRedis()
+	StartCoreWs(port)
+	// runRedis()
 	utils.Log("WS running :", port)
 }
