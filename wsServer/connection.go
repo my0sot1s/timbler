@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/my0sot1s/timbler/helper"
-	"github.com/my0sot1s/tinker/utils"
+	logx "github.com/my0sot1s/godef/log"
 )
 
 var (
@@ -144,7 +144,7 @@ func (c *Connection) SetWriteDeadline() {
 
 // CatchError is action Log Error
 func (c *Connection) CatchError(err error) {
-	utils.ErrLog(err)
+	logx.ErrLog(err)
 }
 
 // IsConnectionInvited check connection is invited
@@ -184,7 +184,7 @@ func (c *Connection) EventActived(evt *Event) {
 	case Unsubscribe:
 		// do something leave
 		if isExisted := c.roomHub.IsRoomExisted(evt.PayLoad); !isExisted {
-			utils.Log("Room not existed false to leave")
+			logx.Log("Room not existed false to leave")
 		} else {
 			r := c.roomHub.GetRoomByName(evt.PayLoad)
 			c.roomsInvited[r] = false
@@ -203,12 +203,12 @@ func (c *Connection) EventActived(evt *Event) {
 // MessageFlowProcess split flow
 func (c *Connection) MessageFlowProcess(bin []byte) {
 	event := &Event{}
-	utils.Str2T(string(bin), event)
+	logx.Str2T(string(bin), event)
 	// utils.Log("Event Come == ", event.Name)
 	switch event.Name {
 	case Subscribe, Unsubscribe:
 		slice := []string{}
-		utils.Str2T(event.PayLoad, &slice)
+		logx.Str2T(event.PayLoad, &slice)
 		if event.Name == Subscribe {
 			c.Subscribe(slice)
 		} else if event.Name == Unsubscribe {
@@ -216,12 +216,12 @@ func (c *Connection) MessageFlowProcess(bin []byte) {
 		}
 	case Messagetext:
 		msg := &Message{}
-		utils.Str2T(event.PayLoad, msg)
-		utils.Log(msg, "blue")
+		logx.Str2T(event.PayLoad, msg)
+		logx.Log(msg, "blue")
 		// 1. check room is existed room list
 		r := c.roomHub.GetRoomByName(msg.To)
 		if isSub := c.roomsInvited[r]; !isSub || r == nil {
-			utils.Log("Room is not joined ", msg.To)
+			logx.Log("Room is not joined ", msg.To)
 			return
 		}
 		// 2. send all client on room
@@ -233,13 +233,13 @@ func (c *Connection) MessageFlowProcess(bin []byte) {
 	case Commit:
 		c.Commit(event.PayLoad)
 	default:
-		utils.Log("come fuck")
+		logx.Log("come fuck")
 	}
 }
 
 // ReadMessageData is a action Read message from any room
 func (c *Connection) ReadMessageData() {
-	defer utils.Log("defer read")
+	defer logx.Log("defer read")
 	// defer c.connection.Close()
 	c.connection.SetReadLimit(maxMessageReadSize)
 	c.SetReadDeadline()
@@ -250,10 +250,10 @@ func (c *Connection) ReadMessageData() {
 	for {
 		_, message, err := c.connection.ReadMessage()
 		if err != nil {
-			utils.ErrLog(err)
+			logx.ErrLog(err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				if c.missPingCount >= limitResent {
-					utils.Log("Connection Dead: ", c.ID)
+					logx.Log("Connection Dead: ", c.ID)
 					c.killConnection()
 					// c.CatchError(err)
 				}
@@ -263,7 +263,7 @@ func (c *Connection) ReadMessageData() {
 		}
 		c.missPingCount = 0
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		utils.Log("message:", string(message))
+		logx.Log("message:", string(message))
 		c.MessageFlowProcess(message)
 		// do some thing with message
 		// utils.Log("Add done!!")
@@ -277,7 +277,7 @@ func (c *Connection) WriteMessageData() {
 	// time for resent message uncommit
 	resent := time.NewTicker(pongWait / 2)
 	defer func() {
-		defer utils.Log("defer write")
+		defer logx.Log("defer write")
 		ticker.Stop()
 		resent.Stop()
 		// c.killConnection()
@@ -333,19 +333,19 @@ func (c *Connection) WriteMessageData() {
 // Subscribe is a action definition of join any rooms
 func (c *Connection) Subscribe(rooms []string) {
 	for _, r := range rooms {
-		utils.Log("sub: ", r)
+		logx.Log("sub: ", r)
 		c.event <- &Event{
 			Name:    Subscribe,
 			PayLoad: r,
 		}
 	}
-	utils.Log("On room ")
+	logx.Log("On room ")
 }
 
 // Unsubscribe just definination any action leave rooms
 func (c *Connection) Unsubscribe(rooms []string) {
 	for _, r := range rooms {
-		utils.Log("unsub: ", r)
+		logx.Log("unsub: ", r)
 		c.event <- &Event{
 			Name:    Unsubscribe,
 			PayLoad: r,
