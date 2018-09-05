@@ -1,23 +1,27 @@
-package main
+package timbler
 
 import (
 	"encoding/json"
 
 	"github.com/gin-gonic/gin"
-	"github.com/my0sot1s/timbler/wsServer"
-	"github.com/my0sot1s/tinker/utils"
+	logx "github.com/my0sot1s/godef/log"
 )
 
+// RealtimeWS realtime struct
+type RealtimeWS struct {
+	rh *RoomHub
+}
+
 // run ws
-func runWs(rh *wsServer.RoomHub, ctx *gin.Context) {
-	c := &wsServer.Connection{}
+func runWs(rh *RoomHub, ctx *gin.Context) {
+	c := &Connection{}
 	c.InitConnection(rh, ctx.Writer, ctx.Request)
 	go c.ReadMessageData()
 	go c.WriteMessageData()
 }
 
 // for data = {id:string,event:string,payload:[{name:string,payload:string}]}
-func subUnSub(hub *wsServer.RoomHub, ctx *gin.Context) {
+func subUnSub(hub *RoomHub, ctx *gin.Context) {
 	id := ctx.PostForm("id")
 	event := ctx.PostForm("event")
 	payload := ctx.PostForm("payload")
@@ -31,7 +35,7 @@ func subUnSub(hub *wsServer.RoomHub, ctx *gin.Context) {
 		return
 	}
 	if isDone := hub.InjectEvent4Hub(id, event, rooms); !isDone {
-		utils.Log("Can not find connection by cid:", id)
+		logx.Log("Can not find connection by cid:", id)
 		ctx.JSON(400, gin.H{
 			"name":    "error",
 			"payload": "Can not find connection by cid:",
@@ -43,29 +47,20 @@ func subUnSub(hub *wsServer.RoomHub, ctx *gin.Context) {
 	})
 }
 
-func ginConfig() *gin.Engine {
+// InitWS create form
+func (ws *RealtimeWS) InitWS(router *gin.Engine, root string) {
+	ws.rh = &RoomHub{}
+	go ws.rh.Init()
 
-	mode := gin.TestMode
-	// set mode `production` or `dev`
-	gin.SetMode(mode)
-	g := gin.New()
-	g.Use(gin.Recovery(), gin.Logger())
-	return g
-}
+	logx.Log("-- WebSocket started --:")
 
-// StartCoreWs Start Ws
-func StartCoreWs(port string) {
-	// Config Gin
-	router := ginConfig()
-	router.Static("/client", "./client")
-	rh := &wsServer.RoomHub{}
-	go rh.Init()
+	router.Static("/client", root+"/client")
+
 	router.GET("/ws", func(ctx *gin.Context) {
-		runWs(rh, ctx)
-	})
-	router.POST("/ws/sub-unsub", func(ctx *gin.Context) {
-		subUnSub(rh, ctx)
+		runWs(ws.rh, ctx)
 	})
 
-	router.Run(":" + port)
+	router.POST("/ws/sub-unsub", func(ctx *gin.Context) {
+		subUnSub(ws.rh, ctx)
+	})
 }

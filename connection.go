@@ -1,4 +1,4 @@
-package wsServer
+package timbler
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/my0sot1s/timbler/helper"
+	convt "github.com/my0sot1s/godef/convt"
 	logx "github.com/my0sot1s/godef/log"
 )
 
@@ -61,6 +61,7 @@ type Event struct {
 	PayLoad string `json:"payload"`
 }
 
+// CommitEvent type commit
 type CommitEvent struct {
 	Msg   *Message
 	count int
@@ -93,7 +94,7 @@ func (c *Connection) InitConnection(rh *RoomHub, w http.ResponseWriter, r *http.
 		return
 	}
 	if c.ID == "" || &c.ID == nil {
-		c.ID = helper.CreateID("cl")
+		c.ID = convt.CreateID("cl")
 	}
 	c.connection = conn
 	c.roomHub = rh
@@ -121,7 +122,7 @@ func (c *Connection) killConnection() {
 
 func (c *Connection) sendId() {
 	m := Message{
-		ID:      helper.CreateID("msg"),
+		ID:      convt.CreateID("msg"),
 		Type:    "system",
 		Text:    c.GetID(),
 		Created: time.Now().Second(),
@@ -225,7 +226,7 @@ func (c *Connection) MessageFlowProcess(bin []byte) {
 			return
 		}
 		// 2. send all client on room
-		msg.ID = helper.CreateID("msg")
+		msg.ID = convt.CreateID("msg")
 		c.mutex.Lock()
 		c.roomHub.SendMessageToRoom(r, msg)
 		c.messagesQueue[msg.ID] = &CommitEvent{count: 0, Msg: msg}

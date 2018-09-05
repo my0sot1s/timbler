@@ -1,12 +1,11 @@
-package wsServer
+package timbler
 
 import (
 	"errors"
 	"time"
 
-	"github.com/my0sot1s/timbler/helper"
-
 	logx "github.com/my0sot1s/godef/log"
+	convt "github.com/my0sot1s/godef/convt"
 )
 
 // RoomHub room service
@@ -132,7 +131,7 @@ func (r *Room) createRoom(name string) {
 		return
 	}
 	r.Name = name
-	r.ID = helper.CreateID("ro")
+	r.ID = convt.CreateID("ro")
 	r.Clients = make(map[*Connection]bool)
 
 }
